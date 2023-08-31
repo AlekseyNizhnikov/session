@@ -1,0 +1,47 @@
+<Content>:
+    orientation: "horizontal"
+    spacing: "12dp"
+    size_hint_y: None
+    height: "120dp"
+
+MainScreen:
+    name: "MainScreen"
+    MDScreen:
+        name: "TopScreen"
+        MDNavigationLayout:
+            id: naw_layout
+            ScreenMenu:
+                id: screen_manager
+            MDNavigationDrawer:
+                id: nav_drawer
+                type: "modal"
+                anchor: "left"
+                scrim_color: 0, 0, 0, .6
+                padding: 16
+                md_bg_color:(1, 1, 1, 1)
+                MDBoxLayout:
+                    orientation: "vertical"
+                    AnchorLayout:
+                        padding: (12, 0, 0, 0)
+                        anchor_x: "left"
+                        size_hint_y: None
+                        height: avatar.height
+                        Image:
+                            id: avatar
+                            size_hint: None, None
+                            size: "120dp", "120dp"
+                            source: "./Images/avatar.png"
+                    MDLabel:
+                        padding: (12, 0, 0, 8)
+                        text: "Журнал посещений"
+                        adaptive_height: True
+                        font_name:"./Fonts/20029.ttf"
+                        font_size: '30dp'
+                        halign: "left"
+                    MDSeparator:
+                    MDSeparator:
+                    MDSeparator:
+                    MDScrollView:
+                        ContentNavigation:
+                            id: cnd
+	
