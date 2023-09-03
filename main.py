@@ -17,15 +17,19 @@ from kivymd.uix.dialog import MDDialog
 from kivymd.uix.fitimage import FitImage
 from kivymd.uix.filemanager import MDFileManager
 from kivymd.uix.expansionpanel import MDExpansionPanel, MDExpansionPanelOneLine
-from kivymd.uix.pickers import MDDatePicker
+from kivymd.uix.snackbar import Snackbar
 import datetime
-import sqlite3
 import json
 import os
 from PIL import Image
 from io import BytesIO
 import shutil
 from kivy.utils import platform
+
+from settings import _GREEN, _GRAY, _RED, _MOUNTH, _DAYS
+from data_base import DataBase
+
+data_base = DataBase()
 
 if platform == "android":
     from android.permissions import request_permissions, Permission
@@ -38,8 +42,8 @@ else:
 #summ = self.ui.findChild(QtWidgets.QLineEdit, "summ")
 
 
-from kivy.core.window import Window
-Window.size = (370, 770)
+# from kivy.core.window import Window
+# Window.size = (370, 770)
 
 
 class CallableDownBar(MDTopAppBar):
@@ -58,78 +62,20 @@ class CallableDownBar(MDTopAppBar):
         main_screen = self.parent.parent.parent.parent
 
         if name_screen in ("my_journal", "top_title"):
-            self.parent.parent.parent.parent.parent.parent.parent.add_screen("Завести новый журнал", "input_data_journal")
-            self.parent.parent.parent.parent.parent.parent.parent.current = "input_data_journal"
-        
-        elif name_screen == "set_user":
-            name = self.parent.parent.children[0].children[1].title # имя журнала
-            screen = self.parent.parent
+            app.dialog_journal()
 
-            weight = screen.children[2].children[0].children[3].text.capitalize()
-            height = screen.children[2].children[0].children[2].text.capitalize()
-            age = screen.children[2].children[0].children[1].text
-            phone = screen.children[2].children[0].children[0].text
-
-            father_name = screen.children[1].children[0].text.capitalize()
-            first_name = screen.children[1].children[1].text.capitalize()
-            second_name = screen.children[1].children[2].text.capitalize()
-
-            journal_id = app.cursor_base.execute(f"SELECT journal_id FROM Journals WHERE name_journal = '{name}'").fetchall()[-1][0]
-            user_id = app.cursor_base.execute(f"SELECT user_id FROM Users").fetchall() or 1
-            
-            if user_id != 1:
-                user_id = user_id[-1][0] + 1
-            if not os.path.isfile(f"./users_avatar/{name}/test_user.png"):
-                with Image.open(f"./Images/user.png") as img:
-                    b = BytesIO()
-                    img.save(b, "png")
-                    b.seek(0)
-                    byteImg = b.read()
-                
-            else:
-                with Image.open(f"./users_avatar/{name}/test_user.png") as img:
-                    b = BytesIO()
-                    img.save(b, "png")
-                    b.seek(0)
-                    byteImg = b.read()
-                os.remove(f"./users_avatar/{name}/test_user.png")
-
-            app.cursor_base.execute(f"""INSERT INTO Users (user_id, journal_id, fname, lname, faname, weight, height, age, phone, img)
-                                   VALUES('{user_id}', '{journal_id}', '{first_name}', '{second_name}', '{father_name}', '{weight}', '{height}', '{age}', '{phone}', ?);""", [byteImg])
-
-            date = json.dumps([{datetime.datetime.today().strftime("%Y %b"):{datetime.datetime.today().strftime("%d"): 2}}])
-            app.cursor_base.execute(f"""INSERT INTO Data (user_id, journal_id, session_log) VALUES('{user_id}', '{journal_id}','{date}');""")
-            
-            app.base.commit()
-
-            app.update_users(name, [user_id, journal_id, first_name, second_name, father_name, weight, height, age, phone], data=date)
-            
-            self.parent.parent.parent.parent.current = name
-            screen.parent.parent.remove_widget(screen.parent)
-
-        elif name_screen == "input_data_journal":
-            screen = self.parent.parent.parent.parent.get_screen(name_screen)
-
-            name_journal = screen.children[0].children[1].children[1].text.capitalize()
-            description = screen.children[0].children[1].children[0].text.capitalize() or "Добавить комментарий"
-            app.cursor_base.execute(f"""INSERT INTO Journals (name_journal, description) VALUES('{name_journal}', '{description}');""")
-
-            app.base.commit()
-            app.update_journals(name_journal, description)
-
-            self.parent.parent.parent.current = "TopScreen"
-            screen.parent.remove_widget(screen)
+        elif name_screen == "log_management":
+            pass
 
         elif name_screen in ("statistics","settings","contacts","about", "data_base"):
             main_screen.current = "top_title"
 
         else:
             name_journal = self.parent.parent.parent.name
-            main_screen.add_screen("Добавить пользователя", "set_user", name_journal)
-            main_screen.current = "set_user"
+            app.dialog_user(name_journal)
         
     on_action_button = callable
-
+    
 
 class ContentNavigation(MDList):
     """
@@ -280,19 +226,130 @@ class ContactsBox(MDFloatLayout):
                                     pos_hint={"center_x": 0.52, "center_y": 1 - i / 12}))
 
 
-class Content_2(MDBoxLayout):
-    def __init__(self, name_journal, *args, **kwargs):
+class JournalCard(MDCard, TouchBehavior):
+    def on_touch_down(self, touch):
+        red = [0.44, 0.16, 0.16, 1]
+        green = [0.11, 0.49, 0.27, 1]
+        white = [0.8, 0.8, 0.8, 1]
+
+        name_user, *_ = self.parent.parent.parent.children[0].children[1].children[0].text.split("\n")
+        name_journal = self.parent.parent.parent.parent.parent.parent.parent.children[0].children[4].title
+        name_user = name_user.replace(" ", "")
+
+        journal_id = data_base.get_journal_id(name_journal)
+        name_user = name_user.replace(" ", "")
+
+        user_id = data_base.cursor.execute(f"SELECT user_id FROM Users WHERE journal_id = '{journal_id}' AND lname = '{name_user[:-3]}'").fetchone()[0]
+
+        data = data_base.get_session_log(user_id, journal_id)
+        res = data[0].get(datetime.datetime.today().strftime("%Y %b"), {datetime.datetime.today().strftime("%d"): 0})
+
+        if self.collide_point(*touch.pos):
+            if touch.is_double_tap:
+                if self.md_bg_color == white:
+                    res[datetime.datetime.today().strftime("%d")] = 1
+                    self.md_bg_color = green
+
+                elif self.md_bg_color == green:
+                    res[datetime.datetime.today().strftime("%d")] = 0
+                    self.md_bg_color = red
+
+                else:
+                    res[datetime.datetime.today().strftime("%d")] = 2
+                    self.md_bg_color = white
+
+                data = json.dumps([{datetime.datetime.today().strftime("%Y %b"):res}])
+                data_base.update_row("Data", "session_log", "user_id", user_id, data)
+
+    def on_long_touch(self, *args):
+        red = [0.44, 0.16, 0.16, 1]
+        green = [0.11, 0.49, 0.27, 1]
+        white = [1, 1, 1, 1]
+        
+        if self.children[0].text == "Р":
+            dialog = MDDialog(text="Оплачено?", size_hint=(None, None), size=("300dp", "90dp"),
+                            buttons=[
+                                MDFlatButton(text="Да", text_color=white, md_bg_color=green, on_press=lambda x: fun_1()),
+                                MDFlatButton(text="Нет", text_color=white, md_bg_color=red, on_press=lambda x: fun_2())])
+            dialog.open()   
+            
+        def fun_1():
+            self.line_color=(1, 1, 1, 1)
+            dialog.dismiss(force=True)
+
+        def fun_2():
+            dialog.dismiss(force=True)
+
+
+class SetJournal(MDFloatLayout):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.size_hint_y = None
-        self.height = "200dp"
-        sc = MDScrollView()
-        ls = MDList()
-        journal_id = app.cursor_base.execute(f"SELECT journal_id FROM Journals WHERE name_journal = '{name_journal}'").fetchone()[0]
-        data = app.cursor_base.execute(f"SELECT fname, lname, faname FROM Users WHERE journal_id = '{journal_id}'").fetchall()
-        for dt in data:
-            ls.add_widget(OneLineIconListItem(text = f"{dt[1]} {dt[0][0]}.{dt[0][0]}."))
-        sc.add_widget(ls)
-        self.add_widget(sc)
+        self.size_hint = (None, None)
+        self.size = ("100dp", "100dp")
+        self.add_widget(MDTextField(hint_text="Название журнала", pos_hint={"center_x": 1.4, "center_y": 0.9}, size_hint_x = None, width = "270dp"))
+        self.add_widget(MDTextField(hint_text="Краткое описание", helper_text="Не более 100 символов", helper_text_mode="persistent", pos_hint={"center_x": 1.4, "center_y": 0.5}, size_hint_x = None, width = "270dp"))
+
+
+class SetUser(MDFloatLayout):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.size_hint = (None, None)
+        self.size = ("100dp", "350dp")
+        text_box = MDFloatLayout(MDTextField(hint_text="Фамилия пользователя", pos_hint={"center_x": 0.5, "center_y": 0.8}, size_hint_x = None, width = "290dp"),
+                                 MDTextField(hint_text="Имя пользователя", pos_hint={"center_x": 0.5, "center_y": 0.65}, size_hint_x = None, width = "290dp"),
+                                 MDTextField(hint_text="Отчество пользователя", pos_hint={"center_x": 0.5, "center_y": 0.5}, size_hint_x = None, width = "290dp"),
+                                 pos_hint={"center_x": 1.4, "center_y": 0.1})
+        
+        user_box = MDBoxLayout(MDCard(FitImage(source="./Images/user.png", size_hint_x=None, size_hint_y=None, height="195dp", width="130dp"),
+                                      size_hint_x=None, size_hint_y=None, height="195dp", width="130dp", pos_hint={"center_x": 0.5, "center_y": 0.1}, md_bg_color=(1, 0.3, 0.5, 1)),
+                                orientation="horizontal", size_hint_y=None, height="200dp", pos_hint={"center_x": 0.4, "center_y": 0.98}, padding = "4dp", spacing="70dp")
+        user_box.add_widget(MDFloatLayout(MDTextField(hint_text="Вес", pos_hint={"center_x": 0.5, "center_y": 0.8}, size_hint_x = None, width = "100dp"),
+                                          MDTextField(hint_text="Рост", pos_hint={"center_x": 0.5, "center_y": 0.6}, size_hint_x = None, width = "100dp"),
+                                          MDTextField(hint_text="Возраст", pos_hint={"center_x": 0.5, "center_y": 0.4}, size_hint_x = None, width = "100dp"),
+                                          MDTextField(hint_text="Телефон", pos_hint={"center_x": 0.5, "center_y": 0.2}, size_hint_x = None, width = "100dp"),
+                                          MDTextField(hint_text="Пол", pos_hint={"center_x": 0.5, "center_y": 0.0}, size_hint_x = None, width = "100dp"),
+                                          size_hint_y=None, height="200dp", pos_hint={"center_x": 0.5, "center_y": 0.2}),)
+        
+        self.add_widget(user_box)
+        self.add_widget(text_box)
+
+
+class DialogUserInfo(MDFloatLayout):
+    def __init__(self, name_journal, user_info, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.size_hint = (None, None)
+        self.size = ("100dp", "200dp")
+
+        user_id, journal_id, second_name, first_name, father_name, weight, height, age, phone, gender, img = user_info
+        name_user = f"{second_name} {first_name[0]}.{father_name[0]}."
+
+        io_bytes = BytesIO(img)
+        img = Image.open(io_bytes)
+
+        if not os.path.isdir("users_avatar"):
+            os.mkdir("users_avatar")
+
+        if not os.path.isdir(f"./users_avatar/{name_journal}"):
+            os.mkdir(f"./users_avatar/{name_journal}")
+
+        path_file = f'./users_avatar/{name_journal}/{user_id}_{second_name}_{first_name}_{father_name}.png'
+
+        img.save(path_file)
+        self.add_widget(MDLabel(markup = True, text = f"[color=#000000]{name_user}[/color]", pos_hint = {"center_x": 0.5, "center_y": 1}))
+        self.add_widget(FitImage(source = path_file, size_hint_x=None, size_hint_y=None, height="160dp", width="100dp", md_bg_color = _GREEN, pos_hint = {"center_x": 0.5, "center_y": 0.5}))
+        
+        box_info = MDGridLayout(cols = 1, rows = 8, spacing = "4dp", padding = "4dp", pos_hint = {"center_x": 1.6, "center_y": 0.43})
+        box_info.add_widget(MDLabel(text = f"Возраст: {age} лет", size_hint_x = None, width = "160dp"))
+        box_info.add_widget(MDLabel(text = f"Вес: {weight} кг", size_hint_x = None, width = "160dp"))
+        box_info.add_widget(MDLabel(text = f"Рост: {height} см", size_hint_x = None, width = "160dp"))
+        box_info.add_widget(MDLabel(text = f"Пол: {gender}", size_hint_x = None, width = "160dp"))
+        box_info.add_widget(MDLabel(text = f"Телефон: {phone}", size_hint_x = None, width = "160dp"))
+        box_info.add_widget(MDLabel(text = f"Посещаемость: 1.0", size_hint_x = None, width = "160dp"))
+        box_info.add_widget(MDLabel(text = f"Успеваемость: 1.0", size_hint_x = None, width = "160dp"))
+        box_info.add_widget(MDLabel(text = f"", size_hint_x = None, width = "160dp"))
+
+        self.add_widget(box_info)
+
 
 class MainScreen(MDScreenManager):
     def __init__(self, *args, **kwargs):
@@ -324,7 +381,6 @@ class MainScreen(MDScreenManager):
 
         app.root.get_screen("set_user").children[0].children[2].children[1].children[0].source = f"./users_avatar/{self.name_journal}/test_user.png"
 
-
     def exit_manager(self, *args):
         self.manager_open = False
         self.file_manager.close()
@@ -341,60 +397,21 @@ class MainScreen(MDScreenManager):
         box = MDBoxLayout(orientation="vertical")
         box.add_widget(top_bar)
 
-        if screen_name == "input_data_journal":
-            down_bar.children[1].icon = "chevron-right"
-            down_bar.children[1].left_action_items=[["chevron-double-left", lambda x: self.fun(screen_name)]]
-            down_bar.children[1].title="К журналам..."
-            text_box = MDFloatLayout(MDTextField(hint_text="Название журнала", pos_hint={"center_x": 0.5, "center_y": 0.8}, size_hint_x=0.8),
-                                     MDTextField(hint_text="Краткое описание", helper_text="Не более 100 символов", helper_text_mode="persistent",
-                                      pos_hint={"center_x": 0.5, "center_y": 0.7}, size_hint_x=0.8))
-            box.add_widget(text_box)
-        
-        elif screen_name == "statistic_journal":
-            box_content = MDFloatLayout()
-            box_grid = MDGridLayout(spacing="4dp", padding="4dp", cols=2, rows=4, size_hint_y = None, height = "150 dp", pos_hint = {"top": 1})
-            box_grid.add_widget(MDLabel(text = "Кол-во учеников: ", halign = "left"))
-            box_grid.add_widget(MDLabel(text = "Макс. возраст: ", halign = "left"))
-            box_grid.add_widget(MDLabel(text = "Мин. возраст: ", halign = "left"))
-            box_grid.add_widget(MDLabel(text = "Кол-во мальчиков: ", halign = "left"))
-            box_grid.add_widget(MDLabel(text = "Кол-во девочек: ", halign = "left"))
-            box_grid.add_widget(MDLabel(text = "Средняя посещаемость: ", halign = "left"))
+        if screen_name == "log_management":
+            box_content = MDGridLayout(cols = 2, rows = 4, spacing = "4dp", padding = "4dp")
+            box_content.add_widget(MDTextField(hint_text="Название журнала", pos_hint={"center_x": 0.5, "center_y": 0.8}, size_hint_x = None, width = "290dp"))
+            box_content.add_widget(MDTextField(hint_text="Название журнала", pos_hint={"center_x": 0.5, "center_y": 0.8}, size_hint_x = None, width = "290dp"))
+            box_content.add_widget(MDTextField(hint_text="Название журнала", pos_hint={"center_x": 0.5, "center_y": 0.8}, size_hint_x = None, width = "290dp"))
+            box_content.add_widget(MDTextField(hint_text="Название журнала", pos_hint={"center_x": 0.5, "center_y": 0.8}, size_hint_x = None, width = "290dp"))
+            box_content.add_widget(MDTextField(hint_text="Название журнала", pos_hint={"center_x": 0.5, "center_y": 0.8}, size_hint_x = None, width = "290dp"))
+            box_content.add_widget(MDTextField(hint_text="Название журнала", pos_hint={"center_x": 0.5, "center_y": 0.8}, size_hint_x = None, width = "290dp"))
+            box_content.add_widget(MDTextField(hint_text="Название журнала", pos_hint={"center_x": 0.5, "center_y": 0.8}, size_hint_x = None, width = "290dp"))
+            box_content.add_widget(MDTextField(hint_text="Название журнала", pos_hint={"center_x": 0.5, "center_y": 0.8}, size_hint_x = None, width = "290dp"))
 
-            sc = MDScrollView(pos_hint = {"center_x": 0.51, "center_y": 0.5})
-            ls = MDList()
-            panel_1 = MDRectangleFlatIconButton(text=" Добавить событие...", pos_hint = {"center_x": 0.5})
-            panel_2 = MDExpansionPanel(panel_cls = MDExpansionPanelOneLine(text=" Список учеников..."), content = Content_2(title_name))
-            ls.add_widget(box_grid)
-            ls.add_widget(panel_1)
-            ls.add_widget(panel_2)
-            sc.add_widget(ls)
-            box_content.add_widget(sc)
             box.add_widget(box_content)
-
-        elif screen_name == "set_user":
-            down_bar.children[1].icon = "chevron-right"
-            down_bar.children[1].left_action_items=[["chevron-double-left", lambda x: self.fun_1(screen_name, name_journal)]]
-            down_bar.children[1].title=name_journal
-            text_box = MDFloatLayout(MDTextField(hint_text="Фамилия пользователя", pos_hint={"center_x": 0.5, "center_y": 0.8}, size_hint_x=0.8),
-                                     MDTextField(hint_text="Имя пользователя", pos_hint={"center_x": 0.5, "center_y": 0.7}, size_hint_x=0.8),
-                                     MDTextField(hint_text="Отчество пользователя", pos_hint={"center_x": 0.5, "center_y": 0.6}, size_hint_x=0.8))
-            
-            user_box = MDBoxLayout(MDCard(FitImage(source="./Images/user.png", size_hint_x=None, size_hint_y=None, height="195dp", width="130dp", pos_hint={"center_x": 0.5, "center_y": 0.5}),
-                                          size_hint_x=None, size_hint_y=None, height="195dp", width="130dp", pos_hint={"center_x": 0.5, "center_y": 0.1}, md_bg_color=(1, 0.3, 0.5, 1),
-                                          on_press=lambda x: self.my_callback()),
-                                   MDFloatLayout(MDTextField(hint_text="Вес", pos_hint={"center_x": 0.5, "center_y": 0.8}, size_hint_x=0.5),
-                                               MDTextField(hint_text="Рост", pos_hint={"center_x": 0.5, "center_y": 0.6}, size_hint_x=0.5),
-                                               MDTextField(hint_text="Возраст", pos_hint={"center_x": 0.5, "center_y": 0.4}, size_hint_x=0.5),
-                                               MDTextField(hint_text="Телефон", pos_hint={"center_x": 0.5, "center_y": 0.2}, size_hint_x=0.5),
-                                               MDTextField(hint_text="Пол", pos_hint={"center_x": 0.5, "center_y": 0.0}, size_hint_x=0.5),
-                                               size_hint_y=None, height="200dp", pos_hint={"center_x": 0.5, "center_y": 0.35}),
-                                    orientation="horizontal", size_hint_y=None, height="200dp", pos_hint={"center_x": 0.5, "center_y": 0.35}, padding="40dp")
-            box.add_widget(user_box)
-            box.add_widget(text_box)
-
-        else: 
+        else:
             down_bar.children[1].icon="plus"
-            down_bar.children[1].left_action_items=[["chevron-double-left", lambda x: self.fun_2(screen_name)]]
+            down_bar.children[1].left_action_items=[["chevron-double-left", lambda x: self.to_return_journals()]]
             down_bar.children[1].title="К журналам..."
             dict_mounth = {"01":"Января", "02":"Февраля", "03":"Марта", "04":"Апреля", "05":"Майя", "06":"Июня", "07":"Июля", "08":"Августа", "09":"Сентября", "10":"Октября", "11":"Ноября", "12":"Декабря"}
             year, mounth, day = str(datetime.date.today()).split("-")
@@ -406,9 +423,8 @@ class MainScreen(MDScreenManager):
             scr.add_widget(MDList(spacing="4dp"))
             layout = MDGridLayout(pos_hint={"center_y":0.60}, spacing="14dp", padding="4dp", cols=8, rows=1, size_hint=(None, None), size=("355dp", "10dp"))
             layout.add_widget(MDBoxLayout(size_hint=(None, None), size = ("130dp", "10dp"), pos_hint={"top": 1}))
-            days = {"Mon": "Пн", "Tue": "Вт", "Wed": "Ср", "Thu": "Чт", "Fri": "Пт", "Sat": "Сб", "Sun": "Вс"}
-            for day, val in days.items():
-
+            
+            for day, val in _DAYS.items():
                 card =  MDLabel(text=val, halign="center", font_style="Overline", theme_text_color="Custom")
                 if datetime.datetime.today().strftime("%a") == day:
                     card.font_style = "Caption"
@@ -427,92 +443,45 @@ class MainScreen(MDScreenManager):
 
         return screen
 
-    def fun_2(self, screen_name):
-        screen = self.get_screen(screen_name)
+    def to_return_journals(self):
         self.current = "TopScreen"
-
-    def fun(self, screen_name):
-        print("Нажали кнопку вернуться к журналам")
-        screen = self.get_screen(screen_name)
-        self.current = "TopScreen"
-        self.remove_widget(screen)
-
-    def fun_1(self, screen_name, name_journal):
-        print("Нажали кнопку вернуться к журналам")
-        screen = self.get_screen(screen_name)
-        self.current = name_journal
-        self.remove_widget(screen)
-
-
-class JournalCard(MDCard, TouchBehavior):
-
-    # 0 - Отсутствовал
-    # 1 - Присутствовал
-    # 2 - Не числился
-
-    def on_touch_down(self, touch):
-        red = [0.44, 0.16, 0.16, 1]
-        green = [0.11, 0.49, 0.27, 1]
-        white = [0.8, 0.8, 0.8, 1]
-
-        name_user, *_ = self.parent.parent.parent.children[0].children[1].children[0].text.split("\n")
-        name_journal = self.parent.parent.parent.parent.parent.parent.parent.children[0].children[4].title
-        name_user = name_user.replace(" ", "")
-
-        journal_id = app.cursor_base.execute(f"SELECT journal_id FROM Journals WHERE name_journal = '{name_journal}'").fetchone()[0]
-        name_user = name_user.replace(" ", "")
-
-        user_id = app.cursor_base.execute(f"SELECT user_id FROM Users WHERE journal_id = '{journal_id}' AND lname = '{name_user[:-3]}'").fetchone()[0]
-
-        data = json.loads(app.cursor_base.execute(f"""SELECT session_log FROM Data WHERE user_id = '{user_id}';""").fetchone()[0])
-        res = data[0].get(datetime.datetime.today().strftime("%Y %b"), {datetime.datetime.today().strftime("%d"): 0})
-
-        if self.collide_point(*touch.pos):
-            if touch.is_double_tap:
-                if self.md_bg_color == white:
-                    res[datetime.datetime.today().strftime("%d")] = 1
-                    self.md_bg_color = green
-
-                elif self.md_bg_color == green:
-                    res[datetime.datetime.today().strftime("%d")] = 0
-                    self.md_bg_color = red
-
-                else:
-                    res[datetime.datetime.today().strftime("%d")] = 2
-                    self.md_bg_color = white
-
-                data = json.dumps([{datetime.datetime.today().strftime("%Y %b"):res}])
-                app.cursor_base.execute(f"""UPDATE Data SET session_log = '{data}' WHERE user_id = '{user_id}';""") 
-                app.base.commit()
-
-    def on_long_touch(self, *args):
-        red = [0.44, 0.16, 0.16, 1]
-        green = [0.11, 0.49, 0.27, 1]
-        white = [1, 1, 1, 1]
-        
-        if self.children[0].text == "Р":
-            dialog = MDDialog(text="Оплачено?", size_hint=(None, None), size=("300dp", "90dp"),
-                            buttons=[
-                                MDFlatButton(text="Да", text_color=white, md_bg_color=green, on_press=lambda x: fun_1()),
-                                MDFlatButton(text="Нет", text_color=white, md_bg_color=red, on_press=lambda x: fun_2())])
-            dialog.open()   
-            
-        def fun_1():
-            self.line_color=(1, 1, 1, 1)
-            dialog.dismiss(force=True)
-
-        def fun_2():
-            dialog.dismiss(force=True)
-
-
-class Content(MDBoxLayout):
-    pass
 
 
 class SessionLog(MDApp):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.journals = []
+
+    def on_start(self):
+        """
+        Метод запускает приложение. Инициализирует переменные и формирует интерфейс приложения.
+        """
+
+        nav_drawer = self.root.ids.nav_drawer
+        screen_names = {"Журнал посещений": ("top_title", "home"),
+                        "Управление журналами": ("my_journal", "book-open-variant"),
+                        "Статистика": ("statistics", "finance"),
+                        "Настройки": ("settings", "cog"),
+                        "Контакты": ("contacts", "phone-classic"),
+                        "База данных": ("data_base", "database"),
+                        "О приложении": ("about", "information-outline")}
+
+        """Создаем экраны меню."""
+        for title_name, data in screen_names.items():
+            screen_name, icon_name = data
+            self.root.ids.screen_manager.add_screen(title_name, screen_name, nav_drawer)
+            self.root.ids.cnd.add_item_menu(title_name, screen_name, icon_name)
+
+        journals = data_base.get_all_journals()
+        for journal in journals:
+            journal_id, name_journal, description = journal
+
+            self.update_journals(name_journal, description)
+            users = data_base.get_all_users(journal_id)
+
+            if users != []:
+                for user in users:
+                    self.update_users(name_journal, user)
 
     def update_journals(self, name_journal:str, description=""): 
         """
@@ -539,59 +508,41 @@ class SessionLog(MDApp):
                                             secondary_text=" ",
                                             _no_ripple_effect=True,
                                             bg_color=(0.9,0.9,0.9,1),
-                                            on_press=lambda x: self.fun_4(name_journal))),
+                                            on_release = lambda x: self.log_management(name_journal))),
                                     size_hint_y=None,
                                     height="70dp",
                                     type_swipe="auto",
-                                    on_swipe_complete=lambda x: self.remove_journal(card_journal, journal, name_journal),
-                                    )
+                                    on_swipe_complete=lambda x: self.remove_journal(card_journal, journal, name_journal))
 
         self.root.ids.screen_manager.get_screen("my_journal").children[0].children[1].children[0].add_widget(card_journal)
 
-    def fun_4(self, name_journal):
-        self.root.add_screen(name_journal, "statistic_journal")
-        self.root.current = "statistic_journal"
+    def log_management(self, name_journal):
+        self.root.add_screen(name_journal, "log_management")
+        self.root.current = "log_management"
 
-    def update_users(self, name_journal:str, users:list, data=""):
+    def update_users(self, name_journal:str, users:list, data=None):
         """
         Метод обновляет список пользователей в журнале.
         """
 
-        data = json.loads(self.cursor_base.execute(f"SELECT session_log FROM Data WHERE user_id = '{users[0]}'").fetchone()[0])
-
         screen = self.root.get_screen(name_journal)
+        journals = screen.children[0].children[1].children[0]
 
-        ls = screen.children[0].children[1].children[0]
-        j =int(datetime.datetime.today().strftime("%w"))
-        day = int(datetime.datetime.today().strftime("%d"))
-        mounth = {"Jan":31, "Feb":28, "Mar":31, "Apr":30, "May":31,"Jun":30,"Jul":31,"Aug":31,"Sep":30, "Oct":31,"Nov":30,"Dec":31}
-
-        if day + 7 <= mounth[datetime.datetime.today().strftime("%b")]:
-            _DAYS = [str(i) for i in range(day - (6 - (7 - j)), day + (8 - j))]
-            count = 0
-            for i in (range(6, -1, -1)):
-                if int(_DAYS[i]) <= 0:
-                   test = datetime.datetime.today() - datetime.timedelta(days = day + count)
-                   _DAYS[i] = test.strftime("%d")
-                   count += 1
-        else:
-            _DAYS = [str(i) for i in range(day, 31 + 1)]
-            ln = len(_DAYS)
-            for i in range(1, (8 - ln)):
-                _DAYS.append(str(i))
+        day_mounth = int(datetime.datetime.today().strftime("%d"))
+        week_days = self.get_week_date()
 
         box_childrens = MDBoxLayout(MDLabel(text=str(users[0]), pos_hint={"left": 1,"center_y":0.5}, size_hint_x=None, width="15dp", font_style="Caption"),
                                     orientation="horizontal", padding="10dp", spacing="2dp")
-        user_labels = MDBoxLayout(MDFlatButton(text=f"{users[3]} {users[2][0]}.{users[4][0]}\n{users[8]}", font_style="Caption", pos_hint={"center_y":0.5}, on_press=lambda x: self.fun(x)),
+        user_labels = MDBoxLayout(MDFlatButton(text=f"{users[3]} {users[2][0]}.{users[4][0]}\n{users[8]}", font_style="Caption", pos_hint={"center_y":0.5}, on_press=lambda x: self.dialog_user_info(name_journal, users)),
                                    size_hint_x=None, width="115dp")
 
 
-        day_labels = [MDLabel(text=item, halign="center", font_style="Overline") for item in _DAYS]
+        day_labels = [MDLabel(text=item, halign="center", font_style="Overline") for item in week_days]
         layout = MDGridLayout(pos_hint={"center_y":0.45}, spacing="7dp", padding="4dp", cols=7, rows=1)
         flag = False
-        for day in day_labels:
-            card = JournalCard(elevation=1, ripple_behavior=True, md_bg_color=(0.8, 0.8, 0.8, 1), size_hint=(None, None), size=("23dp", "23dp"))
-            dd = day.text
+        for day_mounth in day_labels:
+            card = JournalCard(elevation=1, ripple_behavior=True, md_bg_color=_GRAY, size_hint=(None, None), size=("23dp", "23dp"))
+            dd = day_mounth.text
             if int(dd) < 10:
                 dd = "0" + dd
 
@@ -600,47 +551,26 @@ class SessionLog(MDApp):
 
             if flag == False:
                 mon = datetime.datetime.today().strftime("%Y %b")
-                if mon in data[0] and dd in data[0].get(mon):
-                    if data[0].get(mon).get(dd) == 1:
-                        card.md_bg_color = (0.11, 0.49, 0.27, 1)
-                    elif data[0].get(mon).get(dd) == 0:
-                        card.md_bg_color = (0.44, 0.16, 0.16, 1)
-                if day.text == "Р":
-                    card.line_color=(0.11, 0.49, 0.27, 1)
-            card.add_widget(day)
+                # if mon in data[0] and dd in data[0].get(mon):
+                #     if data[0].get(mon).get(dd) == 1:
+                #         card.md_bg_color = _GREEN
+                #     elif data[0].get(mon).get(dd) == 0:
+                #         card.md_bg_color = (0.44, 0.16, 0.16, 1)
+                if day_mounth.text == "Р":
+                    card.line_color = _GREEN
+            card.add_widget(day_mounth)
             
             layout.add_widget(card)
 
         box_childrens.add_widget(user_labels)
         box_childrens.add_widget(layout)
         card_swipe = MDCard(box_childrens, size_hint_y=None, height="60dp")
-        ls.add_widget(card_swipe)
+        journals.add_widget(card_swipe)
 
-    def fun(self, instance):
-        name_user, *_ = instance.children[0].text.split("\n")
-        user_id = instance.parent.parent.children[2].text
-        result = app.cursor_base.execute(f"SELECT * FROM Users WHERE user_id = '{user_id}'").fetchone()
-        name_journal = app.cursor_base.execute(f"SELECT name_journal FROM Journals WHERE journal_id = '{result[1]}'").fetchone()[0]
-        
-        box = MDBoxLayout(orientation="vertical", spacing="8dp", padding="8dp")
-        box.add_widget(MDLabel(text=name_user))
-        box.add_widget(MDLabel(text=f"Возраст: {result[7]} лет"))
-        box.add_widget(MDLabel(text=f"Вес: {result[5]} кг"))
-        box.add_widget(MDLabel(text=f"Рост: {result[6]} см"))
-        box.add_widget(MDLabel(text="Пол: М"))
-        box.add_widget(MDLabel(text=f"Телефон: {result[8]}"))
-        io_bytes = BytesIO(result[9])
-        img = Image.open(io_bytes)
-
-        if not os.path.isdir("users_avatar"):
-            os.mkdir("users_avatar")
-        if not os.path.isdir(f"./users_avatar/{name_journal}"):
-            os.mkdir(f"./users_avatar/{name_journal}")
-
-        img.save(f'./users_avatar/{name_journal}/{user_id}_{result[1]}_{name_user}.png')
-        dialog_1 = MDDialog(size_hint=(None, None), size=("340dp", "200dp"), title="Карточка пользователя", type="custom",
-                            content_cls=Content(FitImage(source=f'./users_avatar/{name_journal}/{user_id}_{result[1]}_{name_user}.png', size_hint_x=None, size_hint_y=None, height="120dp", width="80dp"),
-                                                box))
+    def dialog_user_info(self, name_journal, user_info):
+        dialog_1 = MDDialog(radius=[20, 7, 20, 7], size_hint=(None, None), size=("340dp", "200dp"),
+                            title="Карточка пользователя", type="custom",
+                            content_cls=DialogUserInfo(name_journal, user_info))
         
         dialog_1.open()   
 
@@ -659,77 +589,101 @@ class SessionLog(MDApp):
         :return:
         """
 
-        journal_id = self.cursor_base.execute(f"SELECT journal_id FROM Journals WHERE name_journal = '{name_journal}'").fetchone()[0]
-        self.cursor_base.execute(f"DELETE FROM Data WHERE journal_id='{journal_id}';")
-        self.cursor_base.execute(f"DELETE FROM Users WHERE journal_id='{journal_id}';")
-        self.cursor_base.execute(f"DELETE FROM Journals WHERE journal_id='{journal_id}';")
-
-        self.base.commit()
+        journal_id = data_base.get_journal_id(name_journal)
+        data_base.del_row(("Data", "Users", "Journals"), journal_id)
         self.journals.pop(self.journals.index(self.root.get_screen(name_journal)))
 
         card_journal.parent.remove_widget(card_journal)
         journal.parent.remove_widget(journal)
 
-    def on_start(self):
-        """
-        Метод запускает приложение. Инициализирует переменные и формирует интерфейс приложения.
-        """
-
-        _NAME_DB = "Journals.db" 
-        nav_drawer = self.root.ids.nav_drawer
-        screen_names = {"Журнал посещений": ("top_title", "home"),
-                        "Управление журналами": ("my_journal", "book-open-variant"),
-                        "Статистика": ("statistics", "finance"),
-                        "Настройки": ("settings", "cog"),
-                        "Контакты": ("contacts", "phone-classic"),
-                        "База данных": ("data_base", "database"),
-                        "О приложении": ("about", "information-outline")}
-
-        """Создаем экраны меню."""
-        for title_name, data in screen_names.items():
-            screen_name, icon_name = data
-            self.root.ids.screen_manager.add_screen(title_name, screen_name, nav_drawer)
-            self.root.ids.cnd.add_item_menu(title_name, screen_name, icon_name)
-
-        """Подключаемся к базе данных."""
-        self.base = sqlite3.connect(_NAME_DB)
-        self.cursor_base = self.base.cursor()
+    def get_week_date(self) -> list:
+        day_week =int(datetime.datetime.today().strftime("%w"))
+        day_mounth = int(datetime.datetime.today().strftime("%d"))
+        all_days_today_mounth = _MOUNTH[datetime.datetime.today().strftime("%b")]
         
-        app.cursor_base.execute(f"""CREATE TABLE IF NOT EXISTS Journals(
-                                                                        journal_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                                                        name_journal TEXT,
-                                                                        description TEXT);""")
+        if day_week == 0:
+            day_week = 7
 
-        app.cursor_base.execute(f"""CREATE TABLE IF NOT EXISTS Users(
-                                                                    user_id INTEGER PRIMARY KEY,
-                                                                    journal_id INTEGER REFERENCES JOURNALS(journal_id) ON UPDATE CASCADE,
-                                                                    fname TEXT,
-                                                                    lname TEXT,
-                                                                    faname TEXT,
-                                                                    weight TEXT,
-                                                                    height TEXT,
-                                                                    age INT,
-                                                                    phone TEXT,
-                                                                    img BLOB );""")
+        if day_week == 1:
+            if day_mounth + 7 <= all_days_today_mounth:
+                return [str(i) for i in range(day_mounth, day_mounth + (all_days_today_mounth - day_mounth) + 1)]
+            elif day_mounth + 7 > all_days_today_mounth:
+                days_1 = [str(i) for i in range(day_mounth, day_mounth + (all_days_today_mounth - day_mounth) + 1)]
+                days_2 = [str(i) for i in range(1, int((datetime.datetime.today() + datetime.timedelta(days = 7)).strftime("%d")))]
+                return days_1 + days_2
+        else:
+            if day_mounth - day_week >= 0:
+                days_1 = [str(i) for i in range((day_mounth - day_week) + 1, day_mounth)]
+                days_2 = [str(i) for i in range(day_mounth, day_mounth + (7 - day_week) + 1)]
+                return days_1 + days_2
+            elif day_mounth - day_week < 0:
+                all_days_old_mounth = _MOUNTH[(datetime.datetime.today() - datetime.timedelta(days = abs(day_mounth - day_week))).strftime("%b")]
+                days_1 = [str(i) for i in range(int((datetime.datetime.today() - datetime.timedelta(days = day_week)).strftime("%d")) + 1, all_days_old_mounth + 1)]
+                days_2 = [str(i) for i in range(1, day_mounth + 1)]
+                return days_1 + days_2
 
-        app.cursor_base.execute(f"""CREATE TABLE IF NOT EXISTS Data(
-                                                                    data_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                                                    user_id INTEGER REFERENCES USERS(user_id) ON UPDATE CASCADE,
-                                                                    journal_id INTEGER REFERENCES JOURNALS(journal_id) ON UPDATE CASCADE,
-                                                                    session_log TEXT);""")
+    def dialog_journal(self):
+        content = SetJournal()
+        dialog = MDDialog(radius=[20, 7, 20, 7], title = "Добавить новый журнал", type = "custom", content_cls = content,
+                          buttons = [MDFlatButton(text = "Добавить", md_bg_color = _GREEN, theme_text_color = "Custom", text_color = "white", on_release = lambda x: self.set_journal(dialog, content))])
+        dialog.open()
 
-        journals = self.cursor_base.execute(f"SELECT * FROM Journals;").fetchall()
+    def set_journal(self, other, content):
+        name_table = "Journals"
+        journal_id = data_base.get_last_journal_id() + 1
 
-        for journal in journals:
-            self.update_journals(journal[1], journal[2])
-            users = self.cursor_base.execute(f"SELECT * FROM Users WHERE journal_id = '{journal[0]}'").fetchall()
+        name_journal = content.children[1].text.capitalize()
+        description = content.children[0].text.capitalize() or "Добавить комментарий"
 
-            if users != []:
-                for user in users:
-                    self.update_users(journal[1], user)
+        if data_base.search_journal(journal_id - 1, name_journal):
+            data_base.set_row(name_table, (journal_id, name_journal, description))
+            app.update_journals(name_journal, description)
+            other.dismiss(force = True)
+        else:
+            self.error_create_journal(name_journal)
 
-    def par(self, other):
-        other.md_bg_color = (0.2, 0.1, 1, 1)
+    def error_create_journal(self, name_journal):
+        Snackbar(text = f"Журнал {name_journal} уже существует", font_size = "16dp", height = "100dp").open()
+
+    def dialog_user(self, name_journal):
+        content = SetUser()
+        dialog = MDDialog(radius=[20, 7, 20, 7], title = "Добавить пользователя", type = "custom", content_cls = content,
+                          buttons = [MDFlatButton(text = "Добавить", md_bg_color = _GREEN, theme_text_color = "Custom", text_color = "white", on_release = lambda x: self.set_user(name_journal, dialog, content))])
+        dialog.open()
+
+    def set_user(self, name_journal, dialog, content):
+        journal_id = data_base.get_journal_id(name_journal)
+        user_id = data_base.get_last_user_id() + 1
+
+        user_name_info = [content.children[0].children[i].text.capitalize() for i in range(2, -1, -1)]
+        user_info = [content.children[1].children[0].children[i].text.capitalize() for i in range(4, -1, -1)]
+
+        if not os.path.isfile(f"./users_avatar/{name_journal}/test_user.png"):
+            with Image.open(f"./Images/user.png") as img:
+                b = BytesIO()
+                img.save(b, "png")
+                b.seek(0)
+                byteImg = b.read()
+            
+        else:
+            with Image.open(f"./users_avatar/{name_journal}/test_user.png") as img:
+                b = BytesIO()
+                img.save(b, "png")
+                b.seek(0)
+                byteImg = b.read()
+            os.remove(f"./users_avatar/{name_journal}/test_user.png")
+
+        result = user_name_info + user_info
+        result.append(byteImg)
+        result.insert(0, journal_id)
+        result.insert(0, user_id)
+
+        data_base.set_row(name_table="Users", data=result)
+        
+        session_log = json.dumps([{datetime.datetime.today().strftime("%Y %b"):{datetime.datetime.today().strftime("%d"): 2}}])
+        data_base.set_row(name_table="Data", data=[data_base.get_last_data_id() + 1, user_id, journal_id, session_log])
+        app.update_users(name_journal, result, data=session_log)
+        dialog.dismiss(force = True)
 
 
 if __name__ == "__main__":
