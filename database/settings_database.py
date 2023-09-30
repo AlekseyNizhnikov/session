@@ -1,5 +1,0 @@
-_NAME_DATABASE = "Journals.db"
-_NAME_JOURNALS_DATABASE = "Journals"
-_NAME_USERS_DATABASE = "Users"
-_NAME_DATA_DATABASE = "Data"
-_NAME_SETTINGS_JOURNAL = "ConfigJournals"

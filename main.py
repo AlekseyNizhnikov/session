@@ -16,7 +16,6 @@ from kivymd.uix.behaviors import TouchBehavior
 from kivymd.uix.dialog import MDDialog
 from kivymd.uix.filemanager import MDFileManager
 from kivymd.uix.selectioncontrol import MDSwitch
-from kivy.uix.switch import Switch
 from kivymd.uix.snackbar import Snackbar
 
 from kivy.metrics import dp
@@ -30,10 +29,11 @@ from io import BytesIO
 import shutil
 from kivy.utils import platform
 
-from content.content import AboutBox, SettingsBox, ContactsBox, DialogUserInfo
-from set.set import SetEvent, SetJournal, SetUser
-from settings import _GREEN, _GRAY, _RED, _MOUNTH, _DAYS, _MOUNTH_DAY, _RUS_DAYS
-from database.database import DataBase
+from view.view import SetEvent, SetJournal, SetUser, AboutBox, SettingsBox, ContactsBox, DialogUserInfo, SetUserCard, CustomLogUser
+from configurate.config import _MOUNTH, _DAYS, _MOUNTH_DAY, _RUS_DAYS
+from configurate.colors import _GREEN, _GRAY, _RED
+
+from controller.database import DataBase
 
 __version__ = '1.0.0'
 
@@ -47,8 +47,8 @@ if platform == "android":
 else:
     primary_ext_storage = "./"
 
-# from kivy.core.window import Window
-# Window.size = (370, 770)
+from kivy.core.window import Window
+Window.size = (370, 770)
 
 
 class CallableDownBar(MDTopAppBar):
@@ -84,11 +84,11 @@ class CallableDownBar(MDTopAppBar):
             configs = dict()
             for i, config in zip(range(8, 2, -1), ("three_day", "two_day", "sorted", "birthday", "money", "visit")):
                 configs[config] = screen.children[0].children[1].children[i].children[0].active
-                
             config = json.dumps(configs)
-
             app.update_journal(new_name_journal, old_name_journal, description, config)
             journal_id = database.get_journal_id(new_name_journal)
+
+            main_screen.get_screen(old_name_journal).name = new_name_journal
             main_screen.get_screen(new_name_journal).children[0].children[1].children[0].clear_widgets()
 
             if configs["sorted"]:
@@ -97,15 +97,37 @@ class CallableDownBar(MDTopAppBar):
                 users = database.get_all_by_id(name_table="Users", name_col="journal_id", id=journal_id)
 
             if users != []:
-                for user in users:
+                for item, user in zip(range(1, len(users) + 1), users):
                     user_id = user[0]
                     session_log = database.get_session_log(user_id, journal_id)
-                    app.download_users(new_name_journal, user, data=session_log, config=configs)
+                    app.download_users(item, new_name_journal, user, data=session_log, config=configs)
 
             main_screen.to_return_my_journals(screen)
     
         elif name_screen in ("statistics","settings","contacts","about", "data_base"):
             main_screen.current = "top_title"
+
+        elif name_screen == "list_users":
+            name_journal = self.parent.parent.parent.children[0].children[2].title
+            app.dialog_card_user(name_journal)
+
+        elif name_screen == "user":
+            gender = screen.children[0].children[1].children[0].children[0].children[2].children[3].children[1].active
+            lname = screen.children[0].children[1].children[0].children[0].children[2].children[2].text.capitalize()
+            fname = screen.children[0].children[1].children[0].children[0].children[2].children[1].text.capitalize()
+            faname = screen.children[0].children[1].children[0].children[0].children[2].children[0].text.capitalize()
+
+            weight = screen.children[0].children[1].children[0].children[0].children[3].children[0].children[4].text
+            height = screen.children[0].children[1].children[0].children[0].children[3].children[0].children[3].text
+            age = screen.children[0].children[1].children[0].children[0].children[3].children[0].children[2].text
+            phone = screen.children[0].children[1].children[0].children[0].children[3].children[0].children[1].text
+            birthday = screen.children[0].children[1].children[0].children[0].children[3].children[0].children[0].text
+            name_journal = self.parent.parent.parent.children[0].children[2].title
+            journal_id = main_screen.data[1]
+            user_id = main_screen.data[0]
+            data = [fname, lname, faname, weight, height, age, phone, birthday, gender]
+            database.update_row_user(user_id, journal_id, data)
+            main_screen.to_return_user(screen)
 
         else:
             name_journal = self.parent.parent.parent.name
@@ -222,36 +244,6 @@ class ScreenMenu(MDScreenManager):
         self.file_manager.close()
 
 
-class JournalCard(MDCard, TouchBehavior):
-    def on_release(self):
-        day_today = str(datetime.datetime.today().strftime("%d")).removeprefix("0")
-        if self.children[0].text == day_today:
-            name_user, *_ = self.parent.parent.parent.children[0].children[1].children[0].text.split("\n")
-            name_journal = self.parent.parent.parent.parent.parent.parent.parent.children[0].children[4].title
-            name_user = name_user.replace(" ", "")
-            
-            journal_id = database.get_journal_id(name_journal)
-            user_id = database.cursor.execute(f"SELECT user_id FROM Users WHERE journal_id = '{journal_id}' AND lname = '{name_user[:-3]}'").fetchone()[0]
-
-            session_log = database.get_session_log(user_id, journal_id)
-            event_today = session_log[0].get(datetime.datetime.today().strftime("%Y %b"), {datetime.datetime.today().strftime("%d"): 0})
-
-            if self.md_bg_color == _GRAY:
-                event_today[datetime.datetime.today().strftime("%d")] = 1
-                self.md_bg_color = _GREEN
-
-            elif self.md_bg_color == _GREEN:
-                event_today[datetime.datetime.today().strftime("%d")] = 0
-                self.md_bg_color = _RED
-
-            else:
-                event_today[datetime.datetime.today().strftime("%d")] = 2
-                self.md_bg_color = _GRAY
-
-            session_log = json.dumps([{datetime.datetime.today().strftime("%Y %b"):event_today}])
-            database.update_row("Data", "session_log", "user_id", user_id, session_log)
-
-
 class CustomThreeMDSwitch(MDSwitch):
     def __init__(self, configs, **kwargs):
         super().__init__(**kwargs)
@@ -259,7 +251,7 @@ class CustomThreeMDSwitch(MDSwitch):
         self.active = configs
         self.icon_active = "check"
         self.icon_active_color = "white"
-        self.pos_hint = {"center_y": .5}
+        self.pos_hint = {"center_y": 0.5}
         self.thumb_color_active = _GREEN
         self.track_color_active = (0.11, 0.49, 0.27, 0.7)
 
@@ -390,8 +382,9 @@ class MainScreen(MDScreenManager):
         self.manager_open = False
         self.file_manager.close()
     
-    def add_screen(self, title_name, screen_name, name_journal=None, description=""):   
+    def add_screen(self, title_name, screen_name, name_journal=None, description="", data=None):   
         self.name_journal = name_journal
+        self.data = data
         screen = MDScreen(name=screen_name)
         
         top_bar = MDTopAppBar(title=title_name, pos_hint={"top": 1}, md_bg_color=(0.11, 0.49, 0.27, 1))
@@ -404,8 +397,8 @@ class MainScreen(MDScreenManager):
 
         if screen_name == "log_management":
             box_1 = MDFloatLayout()
-            box_1.add_widget(MDTextField(hint_text=f"{name_journal}", max_text_length = 30, line_color_focus = _GREEN, hint_text_color_normal = "black", text_color_normal = "black", text_color_focus = "black", fill_color_normal = "white", size_hint_x = None, width = "290dp", pos_hint = {"center_x":0.5, "center_y": 0.95}))
-            box_1.add_widget(MDTextField(hint_text=f"{description}", max_text_length = 50, line_color_focus = _GREEN, hint_text_color_normal = "black", text_color_normal = "black", text_color_focus = "black", fill_color_normal = "white", size_hint_x = None, width = "290dp", pos_hint = {"center_x":0.5, "center_y": 0.88}))
+            box_1.add_widget(MDTextField(font_size = "14sp", text_color_focus = _GREEN, icon_left_color_focus = _GREEN, line_color_focus = _GREEN, hint_text_color_focus = _GREEN, hint_text=f"{name_journal}", max_text_length = 30, size_hint_x = None, width = "290dp", pos_hint = {"center_x":0.5, "center_y": 0.95}))
+            box_1.add_widget(MDTextField(font_size = "14sp", text_color_focus = _GREEN, icon_left_color_focus = _GREEN, line_color_focus = _GREEN, hint_text_color_focus = _GREEN, hint_text=f"{description}", max_text_length = 50, size_hint_x = None, width = "290dp", pos_hint = {"center_x":0.5, "center_y": 0.88}))
             
             journal_id = database.get_journal_id(name_journal)
             configs = database.get_config_journal(journal_id)
@@ -433,7 +426,7 @@ class MainScreen(MDScreenManager):
                                          size_hint_x = None, width = "290dp"))
 
 
-            box_1.add_widget(MDRectangleFlatIconButton(icon = "account", theme_text_color="Custom", _min_width = "300dp", line_color = _GREEN, icon_color = "white", text_color = "white", text = "К списку учеников", pos_hint = {"center_x":0.5, "center_y": 0.35}, md_bg_color = _GREEN))
+            box_1.add_widget(MDRectangleFlatIconButton(icon = "account", theme_text_color="Custom", _min_width = "300dp", line_color = _GREEN, icon_color = "white", text_color = "white", text = "К списку учеников", pos_hint = {"center_x":0.5, "center_y": 0.35}, md_bg_color = _GREEN, on_release = lambda x: app.view_users(name_journal)))
             box_1.add_widget(MDRectangleFlatIconButton(icon = "calendar", theme_text_color="Custom", _min_width = "300dp", line_color = _GREEN, icon_color = "white", text_color = "white", text = "Добавить событие", pos_hint = {"center_x":0.5, "center_y": 0.25}, md_bg_color = _GREEN, on_release = lambda x: app.set_event()))
             box_1.add_widget(MDRectangleFlatIconButton(icon = "finance", theme_text_color="Custom", _min_width = "300dp", line_color = _GREEN, icon_color = "white", text_color = "white", text = "Статистика", pos_hint = {"center_x":0.5, "center_y": 0.15}, md_bg_color = _GREEN))
 
@@ -443,7 +436,7 @@ class MainScreen(MDScreenManager):
             down_bar.children[1].title="К журналам..."
 
         elif screen_name == "statistics":
-                    # box_2 = MDGridLayout(cols = 2, rows = 8, spacing = "10dp", padding = "10dp", size_hint_y = None, height = "200dp", pos_hint = {"center_x":0.57, "center_y": 0.68})
+            # box_2 = MDGridLayout(cols = 2, rows = 8, spacing = "10dp", padding = "10dp", size_hint_y = None, height = "200dp", pos_hint = {"center_x":0.57, "center_y": 0.68})
             # box_2.add_widget(MDLabel(text=f"Кол-во учеников:", size_hint_x = None, width = "180"))
             # box_2.add_widget(MDLabel(text=f"20 чел.", size_hint_x = None, width = "110dp", halign = "right"))
             # box_2.add_widget(MDLabel(text=f"Кол-во девочек: 10", size_hint_x = None, width = "180dp"))
@@ -462,7 +455,25 @@ class MainScreen(MDScreenManager):
             # box_2.add_widget(MDLabel(text=f"130.0  ", size_hint_x = None, width = "110dp", halign = "right"))
             # box_1.add_widget(box_2)
             pass
-        
+
+        elif screen_name == "list_users":
+            box_1 = MDFloatLayout()
+            box_1.add_widget(MDScrollView(MDList(spacing = "8dp"), pos_hint = {"top": 1}))
+            box.add_widget(box_1)
+            down_bar.children[1].icon="plus"
+            down_bar.children[1].left_action_items=[["chevron-double-left", lambda x: self.to_return_log_management(screen)]]
+            down_bar.children[1].title="К настройкам..."
+
+        elif screen_name == "user":
+            box_1 = MDFloatLayout()
+            box_1.add_widget(MDScrollView(SetUserCard(data), size_hint_y = None, height = "600dp", pos_hint={"center_x":0.60, "center_y":0.50}))
+            name_journal = database.get_all_by_id(name_table="journals", id = data[1], name_col="journal_id")[0][1]
+            top_bar.title = name_journal
+            box.add_widget(box_1)
+            down_bar.children[1].icon="content-save-outline"
+            down_bar.children[1].left_action_items=[["chevron-double-left", lambda x: self.to_return_user(screen)]]
+            down_bar.children[1].title="К журналу..."
+
         else:
             down_bar.children[1].icon="plus"
             down_bar.children[1].left_action_items=[["chevron-double-left", lambda x: self.to_return_journals()]]
@@ -503,6 +514,17 @@ class MainScreen(MDScreenManager):
     def to_return_my_journals(self, screen):
         self.remove_widget(screen)
         self.ids.screen_manager.current = "my_journal"
+    
+    def to_return_log_management(self, screen):
+        self.remove_widget(screen)
+        self.current = "log_management"
+
+    def to_return_user(self, screen):
+        self.remove_widget(screen)
+        self.remove_widget(self.get_screen("list_users"))
+        name_journal = screen.children[0].children[2].title
+        app.view_users(name_journal)
+        self.current = "list_users"
 
 
 class ListJournals(TwoLineIconListItem):
@@ -520,6 +542,7 @@ class ListJournals(TwoLineIconListItem):
         app.open_journal(self.name_journal)
 
     def update(self, name_journal, description):
+        self.name_journal = name_journal
         self.text = name_journal
         self.secondary_text = description
 
@@ -544,7 +567,7 @@ class CardListJournal(MDCardSwipe):
                                                                 on_release = lambda x: self.log_management(name_journal, description))))
 
     def on_swipe_complete(self):
-        self.remove_journal(self, self.journal, self.name_journal)
+        app.remove_journal(self, self.journal, self.name_journal)
 
     def log_management(self, name_journal, description):
         app.root.add_screen(title_name=self.name_journal, screen_name="log_management", name_journal=self.name_journal, description=self.description)
@@ -555,6 +578,62 @@ class CardListJournal(MDCardSwipe):
         self.description = description
         self.children[0].children[0].text = name_journal
         self.children[0].children[0].secondary_text = description
+
+
+class JournalCard(MDCard, TouchBehavior):
+    def on_release(self):
+        day_today = str(datetime.datetime.today().strftime("%d")).removeprefix("0")
+        if self.children[0].text == day_today:
+            name_user, *_ = self.parent.parent.parent.children[0].children[1].children[0].text.split("\n")
+            name_journal = self.parent.parent.parent.parent.parent.parent.parent.children[0].children[4].title
+            name_user = name_user.replace(" ", "")
+            
+            journal_id = database.get_journal_id(name_journal)
+            user_id = database.cursor.execute(f"SELECT user_id FROM Users WHERE journal_id = '{journal_id}' AND lname = '{name_user[:-3]}'").fetchone()[0]
+
+            session_log = database.get_session_log(user_id, journal_id)
+            event_today = session_log[0].get(datetime.datetime.today().strftime("%Y %b"), {datetime.datetime.today().strftime("%d"): 0})
+
+            if self.md_bg_color == _GRAY:
+                event_today[datetime.datetime.today().strftime("%d")] = 1
+                self.md_bg_color = _GREEN
+
+            elif self.md_bg_color == _GREEN:
+                event_today[datetime.datetime.today().strftime("%d")] = 0
+                self.md_bg_color = _RED
+
+            else:
+                event_today[datetime.datetime.today().strftime("%d")] = 2
+                self.md_bg_color = _GRAY
+
+            session_log = json.dumps([{datetime.datetime.today().strftime("%Y %b"):event_today}])
+            database.update_row_data(user_id, database.get_journal_id(name_journal), session_log)
+        
+
+class CardListUsers(MDCardSwipe):
+    def __init__(self, data, user_id, journal_id, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user_id = user_id
+        self.journal_id = journal_id
+        self.data = data
+        self.size_hint_y = None
+        self.height = "70dp"
+        self.type_swipe = "auto"
+
+        self.add_widget(MDCardSwipeLayerBox(IconLeftWidget(icon="delete")))
+        self.add_widget(MDCardSwipeFrontBox(TwoLineIconListItem(IconLeftWidget(icon="account-school"),
+                                                                text=f"{data[3]} {data[2]} {data[4]}",
+                                                                secondary_text=f"Вес: {data[5]} Рост: {data[6]} Возраст: {data[7]}",
+                                                                _no_ripple_effect=True,
+                                                                bg_color=(0.9,0.9,0.9,1),
+                                                                on_release = lambda x: self.user(data))))
+
+    def on_swipe_complete(self):
+        app.remove_users(self, self.user_id, self.journal_id)
+
+    def user(self, data):
+        app.root.add_screen(title_name="Управление пользователем", screen_name="user", data=data)
+        app.root.current = "user" 
 
 
 class SessionLog(MDApp):
@@ -598,10 +677,10 @@ class SessionLog(MDApp):
                 users = database.get_all_by_id(name_table="Users", name_col="journal_id", id=journal_id)
 
             if users != []:
-                for user in users:
+                for item, user in zip(range(1, len(users) + 1), users):
                     user_id = user[0]
                     session_log = database.get_session_log(user_id, journal_id)
-                    self.download_users(name_journal, user, data=session_log, config=config)
+                    self.download_users(item, name_journal, user, data=session_log, config=config)
 
     def download_journal(self, name_journal:str, description:str): 
         """
@@ -615,7 +694,7 @@ class SessionLog(MDApp):
         card_journal = CardListJournal(name_journal, journal, description)
         self.root.ids.screen_manager.get_screen("my_journal").children[0].children[1].children[0].add_widget(card_journal)
 
-    def download_users(self, name_journal:str, users:list, data=None, config=None):
+    def download_users(self, item:int, name_journal:str, users:list, data=None, config=None):
         """
         Метод добавляет список пользователей в журнале.
         """
@@ -649,7 +728,7 @@ class SessionLog(MDApp):
         screen = self.root.get_screen(name_journal)
         journals = screen.children[0].children[1].children[0]
         
-        box_childrens = MDBoxLayout(MDLabel(text=str(users[0]), pos_hint={"left": 1,"center_y":0.5}, size_hint_x=None, width="15dp", font_style="Caption"),
+        box_childrens = MDBoxLayout(MDLabel(text=str(item), pos_hint={"left": 1,"center_y":0.5}, size_hint_x=None, width="15dp", font_style="Caption"),
                                     orientation="horizontal", padding="10dp", spacing="2dp")
         user_labels = MDBoxLayout(MDFlatButton(text=f"{users[3]} {users[2][0]}.{users[4][0]}\n{users[8]}", font_style="Caption", pos_hint={"center_y":0.5}, on_press=lambda x: dialog_user_info(name_journal, users)),
                                    size_hint_x=None, width="115dp")
@@ -670,10 +749,10 @@ class SessionLog(MDApp):
                 day_today = "0" + day_today
 
             data_today = datetime.datetime.today().strftime("%Y %b")
-            result = datetime.datetime.today() + datetime.timedelta(days=int(day_today))
-            result = result.strftime("%Y %b")
-
-            if data_today in data[0] and day_today in data[0].get(data_today) and result in data[0].keys():
+            # result = datetime.datetime.today() + datetime.timedelta(days=int(day_today))
+            # result = result.strftime("%Y %b")
+            # print(data[0].get(data_today).keys())
+            if data_today in data[0] and day_today in data[0].get(data_today):# and :#result in data[0].keys():
                 if data[0].get(data_today).get(day_today) == 1:
                     card_day.md_bg_color = _GREEN
                 elif data[0].get(data_today).get(day_today) == 0:
@@ -695,13 +774,38 @@ class SessionLog(MDApp):
             """
             Метод выводит диалоговое окно с информацией о пользователе.
             """
-            MDDialog(radius=[20, 7, 20, 7], size_hint=(None, None), size=("340dp", "200dp"), title="Карточка пользователя", type="custom", content_cls=DialogUserInfo(name_journal, user_info)).open()
+            MDDialog(radius=[dp(20), dp(7), dp(20), dp(7)], size_hint=(None, None), size=("340dp", "200dp"), title="Карточка пользователя", type="custom", content_cls=DialogUserInfo(name_journal, user_info)).open()
 
     def open_journal(self, name_journal):
         """
         Метод создает экран журнала, на котором отображает список пользователей.
         """
         self.root.current = name_journal
+
+    def add_screen(self, new_name_journal, old_name_journal):
+        self.journals.pop(self.journals.index(self.root.get_screen(old_name_journal)))
+        self.journals.append(self.root.add_screen(new_name_journal, new_name_journal))
+
+    def remove_users(self, card_user, user_id, journal_id):
+        """
+        Метод удаляет виджет из списка двух экранов.
+        :param card_journal: ссылка на карточку с журналом экрана my_journal.
+        :param journal: ссылка на журнал с экрана top_title.
+        :return:
+        """
+        
+        dialog = MDDialog(radius=[dp(20), dp(7), dp(20), dp(7)], size_hint=(None, None), size=("340dp", "200dp"), title="Вы уверены что хотите удалить пользователя?", buttons=[MDFlatButton(text="Нет", md_bg_color = _GREEN, on_release = lambda x: dont(dialog)),
+                                                                                                                                                 MDFlatButton(text="Да", md_bg_color = _GREEN, on_release = lambda x: yeas()),
+                                                                                                                                                 ])
+        dialog.open()
+
+        def yeas():
+            database.del_row_user(user_id, journal_id)
+            card_user.parent.remove_widget(card_user)
+
+        def dont(instance):
+            card_user.open_progress = 0
+            instance.dismiss(force = True)
 
     def remove_journal(self, card_journal, journal, name_journal):
         """
@@ -710,17 +814,28 @@ class SessionLog(MDApp):
         :param journal: ссылка на журнал с экрана top_title.
         :return:
         """
-        journal_id = database.get_journal_id(name_journal)
+        
+        dialog = MDDialog(radius=[dp(20), dp(7), dp(20), dp(7)], size_hint=(None, None), size=("340dp", "200dp"), title="Вы уверены что хотите удалить журнал?", buttons=[MDFlatButton(text="Нет", md_bg_color = _GREEN, on_release = lambda x: dont(dialog)),
+                                                                                                                                                 MDFlatButton(text="Да", md_bg_color = _GREEN, on_release = lambda x: yeas()),
+                                                                                                                                                 ])
+        dialog.open()
 
-        database.del_row(("Data", "Users", "Journals"), journal_id)
-        self.journals.pop(self.journals.index(self.root.get_screen(name_journal)))
+        def yeas():
+            journal_id = database.get_journal_id(name_journal)
 
-        card_journal.parent.remove_widget(card_journal)
-        journal.parent.remove_widget(journal)
+            database.del_row(("Data", "Users", "Journals"), journal_id)
+            self.journals.pop(self.journals.index(self.root.get_screen(name_journal)))
+
+            card_journal.parent.remove_widget(card_journal)
+            journal.parent.remove_widget(journal)
+
+        def dont(instance):
+            card_journal.open_progress = 0
+            instance.dismiss(force = True)
 
     def dialog_journal(self):
         content = SetJournal()
-        dialog = MDDialog(radius=[20, 7, 20, 7], title = "Добавить новый журнал", type = "custom", content_cls = content,
+        dialog = MDDialog(radius=[dp(20), dp(7), dp(20), dp(7)], title = "Добавить новый журнал", type = "custom", content_cls = content,
                           buttons = [MDFlatButton(text = "Добавить", md_bg_color = _GREEN, theme_text_color = "Custom", text_color = "white", on_release = lambda x: set_journal(dialog, content))])
         dialog.open()
 
@@ -749,7 +864,7 @@ class SessionLog(MDApp):
 
     def dialog_user(self, name_journal):
         content = SetUser()
-        dialog = MDDialog(radius=[20, 7, 20, 7], title = "Добавить пользователя", type = "custom", content_cls = content,
+        dialog = MDDialog(radius=[dp(20), dp(7), dp(20), dp(7)], title = "Добавить пользователя", type = "custom", content_cls = content,
                           buttons = [MDFlatButton(text = "Добавить", md_bg_color = _GREEN, theme_text_color = "Custom", text_color = "white", on_release = lambda x: set_user(name_journal, dialog, content))])
         dialog.open()
 
@@ -757,47 +872,99 @@ class SessionLog(MDApp):
             journal_id = database.get_journal_id(name_journal)
             user_id = database.get_last_id("user_id", "Users") + 1
 
-            user_name_info = [content.children[0].children[i].text.capitalize() for i in range(2, -1, -1)]
-            user_info = [content.children[1].children[0].children[i].text.capitalize() for i in range(4, -1, -1)]
+            user_name_info = [content.children[0].children[i].text.capitalize() if content.children[0].children[i].text not in ("", " ") else None for i in range(2, -1, -1)]
+            user_info = [content.children[1].children[0].children[i].text.capitalize() if content.children[1].children[0].children[i].text not in ("", " ") else None for i in range(4, -1, -1)]
+            gender = content.children[0].children[3].children[1].active
 
-            if not os.path.isfile(f"./users_avatar/{name_journal}/test_user.png"):
-                with Image.open(f"./Images/user.png") as img:
-                    b = BytesIO()
-                    img.save(b, "png")
-                    b.seek(0)
-                    byteImg = b.read()
+            if None in user_name_info or None in user_info:
+                Snackbar(text = f"Заполните все поля...", font_size = "16dp", height = "100dp").open()
+            else:
+                if not os.path.isfile(f"./users_avatar/{name_journal}/test_user.png"):
+                    with Image.open(f"./assets/images/user.png") as img:
+                        b = BytesIO()
+                        img.save(b, "png")
+                        b.seek(0)
+                        byteImg = b.read()
+                    
+                else:
+                    with Image.open(f"./users_avatar/{name_journal}/test_user.png") as img:
+                        b = BytesIO()
+                        img.save(b, "png")
+                        b.seek(0)
+                        byteImg = b.read()
+                    os.remove(f"./users_avatar/{name_journal}/test_user.png")
+
+                result = user_name_info + user_info
+                result.append(gender)
+                result.append(byteImg)
+                result.insert(0, journal_id)
+                result.insert(0, user_id)
+
+                database.set_row(name_table="Users", data=result)
                 
+                session_log = json.dumps([{datetime.datetime.today().strftime("%Y %b"):{datetime.datetime.today().strftime("%d"): 2}}])
+                database.set_row(name_table="Data", data=[database.get_last_id("data_id", "Data") + 1, user_id, journal_id, session_log])
+
+                config = database.get_config_journal(journal_id)
+                self.root.get_screen(name_journal).children[0].children[1].children[0].clear_widgets()
+                if config["sorted"]:
+                    users = database.get_all_by_id_sorted(name_table="Users", name_col="journal_id", id=journal_id)
+                else:
+                    users = database.get_all_by_id(name_table="Users", name_col="journal_id", id=journal_id)
+
+                if users != []:
+                    for item, user in zip(range(1, len(users) + 1), users):
+                        user_id = user[0]
+                        session_log = database.get_session_log(user_id, journal_id)
+                        app.download_users(item, name_journal, user, data=session_log, config=config)
+                dialog.dismiss(force = True)
+
+    def dialog_card_user(self, name_journal):
+        content = SetUser()
+        dialog = MDDialog(radius=[dp(20), dp(7), dp(20), dp(7)], title = "Добавить пользователя", type = "custom", content_cls = content,
+                          buttons = [MDFlatButton(text = "Добавить", md_bg_color = _GREEN, theme_text_color = "Custom", text_color = "white", on_release = lambda x: set_user(name_journal, dialog, content))])
+        dialog.open()
+
+        def set_user(name_journal, dialog, content):
+            journal_id = database.get_journal_id(name_journal)
+            user_id = database.get_last_id("user_id", "Users") + 1
+
+            user_name_info = [content.children[0].children[i].text.capitalize() if content.children[0].children[i].text not in ("", " ") else None for i in range(2, -1, -1)]
+            user_info = [content.children[1].children[0].children[i].text.capitalize() if content.children[1].children[0].children[i].text not in ("", " ") else None for i in range(4, -1, -1)]
+            gender = content.children[0].children[3].children[1].active
+
+            if None in user_name_info or None in user_info:
+                Snackbar(text = f"Заполните все поля...", font_size = "16dp", height = "100dp").open()
             else:
-                with Image.open(f"./users_avatar/{name_journal}/test_user.png") as img:
-                    b = BytesIO()
-                    img.save(b, "png")
-                    b.seek(0)
-                    byteImg = b.read()
-                os.remove(f"./users_avatar/{name_journal}/test_user.png")
+                if not os.path.isfile(f"./users_avatar/{name_journal}/test_user.png"):
+                    with Image.open(f"./assets/images/user.png") as img:
+                        b = BytesIO()
+                        img.save(b, "png")
+                        b.seek(0)
+                        byteImg = b.read()
+                    
+                else:
+                    with Image.open(f"./users_avatar/{name_journal}/test_user.png") as img:
+                        b = BytesIO()
+                        img.save(b, "png")
+                        b.seek(0)
+                        byteImg = b.read()
+                    os.remove(f"./users_avatar/{name_journal}/test_user.png")
 
-            result = user_name_info + user_info
-            result.append(byteImg)
-            result.insert(0, journal_id)
-            result.insert(0, user_id)
+                result = user_name_info + user_info
+                result.append(gender)
+                result.append(byteImg)
+                result.insert(0, journal_id)
+                result.insert(0, user_id)
 
-            database.set_row(name_table="Users", data=result)
-            
-            session_log = json.dumps([{datetime.datetime.today().strftime("%Y %b"):{datetime.datetime.today().strftime("%d"): 2}}])
-            database.set_row(name_table="Data", data=[database.get_last_id("data_id", "Data") + 1, user_id, journal_id, session_log])
+                database.set_row(name_table="Users", data=result)
+                
+                session_log = json.dumps([{datetime.datetime.today().strftime("%Y %b"):{datetime.datetime.today().strftime("%d"): 2}}])
+                database.set_row(name_table="Data", data=[database.get_last_id("data_id", "Data") + 1, user_id, journal_id, session_log])
 
-            config = database.get_config_journal(journal_id)
-            self.root.get_screen(name_journal).children[0].children[1].children[0].clear_widgets()
-            if config["sorted"]:
-                users = database.get_all_by_id_sorted(name_table="Users", name_col="journal_id", id=journal_id)
-            else:
-                users = database.get_all_by_id(name_table="Users", name_col="journal_id", id=journal_id)
-
-            if users != []:
-                for user in users:
-                    user_id = user[0]
-                    session_log = database.get_session_log(user_id, journal_id)
-                    app.download_users(name_journal, user, data=session_log, config=config)
-            dialog.dismiss(force = True)
+                self.root.get_screen("list_users").children[0].children[1].children[0].children[0].clear_widgets()
+                app.update_card_user(name_journal)
+                dialog.dismiss(force = True)
 
     def check_three_switch(self):
         screen = self.root.get_screen("log_management")
@@ -825,7 +992,7 @@ class SessionLog(MDApp):
         
     def set_event(self):
         content = SetEvent()
-        dialog = MDDialog(radius=[20, 7, 20, 7], title = "Добавить событие", type = "custom", content_cls = content,
+        dialog = MDDialog(radius=[dp(20), dp(7), dp(20), dp(7)], title = "Добавить событие", type = "custom", content_cls = content,
                           buttons = [MDFlatButton(text = "Добавить", md_bg_color = _GREEN, theme_text_color = "Custom", text_color = "white", on_release = lambda x: self.set_user(name_journal, dialog, content))])
         dialog.open()
 
@@ -844,9 +1011,22 @@ class SessionLog(MDApp):
         for journal, card_journal in zip(journals, card_journals):
             if journal.name_journal == old_name_journal:
                 journal.update(new_name_journal, description) 
-
             if card_journal.name_journal == old_name_journal:
                 card_journal.update(new_name_journal, description) 
+
+    def view_users(self, name_journal):
+        self.root.add_screen(name_journal, "list_users")
+        self.root.current = "list_users"
+        app.update_card_user(name_journal)
+
+    def update_card_user(self, name_journal):
+        journal_id = database.get_journal_id(name_journal=name_journal)
+        users = database.get_all_by_id(name_table="Users", name_col="journal_id", id=journal_id)
+        for user in users:
+            user_id, journal_id, *data = user
+
+            card_journal = CardListUsers(user, user_id, journal_id)
+            self.root.get_screen("list_users").children[0].children[1].children[0].children[0].add_widget(card_journal)
 
 
 if __name__ == "__main__":

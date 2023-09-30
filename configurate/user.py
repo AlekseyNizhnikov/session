@@ -1,0 +1,2 @@
+_HELPER_TEXT_USER = ("Фамилия", "Имя", "Отчество")
+_HELPER_TEXT_USER_INFO = {"Вес": "weight-kilogram", "Рост": "human-male-height", "Возраст": "clock-time-four-outline", "Телефон": "phone-in-talk-outline", "День рождения": "cake-variant-outline"}
