@@ -9,6 +9,7 @@ from kivymd.uix.selectioncontrol import MDSwitch
 from kivymd.uix.button import MDIconButton
 from kivymd.uix.behaviors import TouchBehavior
 from kivymd.uix.button import MDFlatButton, MDRectangleFlatIconButton
+from kivymd.uix.scrollview import MDScrollView
 
 from PIL import Image
 from io import BytesIO
@@ -222,18 +223,160 @@ class SetUserCard(MDBoxLayout):
         self.add_widget(MDBoxLayout(size_hint = (None, None), size = ("300dp", "20dp")))
 
 
+class CustomThreeMDSwitch(MDSwitch):
+    def __init__(self, period, not_period, text_period, **kwargs):
+        super().__init__(**kwargs)
+        self.icon_active = "check"
+        self.icon_active_color = "white"
+        self.thumb_color_active = _GREEN
+        self.track_color_active = (0.11, 0.49, 0.27, 0.7)
+        self.period = period
+        self.not_period = not_period
+        self.text_period = text_period
 
-class SetEvent(MDFloatLayout):
+    def on_active(self, instance_switch, active_value: bool) -> None:
+        if active_value == True:
+            self.period.text_color = _GRAY
+            self.not_period.text_color = _GREEN
+            self.text_period.disabled = True
+        else:
+            self.period.text_color = _GREEN
+            self.not_period.text_color = _GRAY
+            self.text_period.disabled = False
+
+        if self.theme_cls.material_style == "M3" and self.widget_style != "ios":
+            size = (
+                (
+                    (dp(16), dp(16))
+                    if not self.icon_inactive
+                    else (dp(24), dp(24))
+                )
+                if not active_value
+                else (dp(24), dp(24))
+            )
+            icon = "blank"
+            color = (0, 0, 0, 0)
+
+            if self.icon_active and active_value:
+                icon = self.icon_active
+                color = (
+                    self.icon_active_color
+                    if self.icon_active_color
+                    else self.theme_cls.text_color
+                )
+            elif self.icon_inactive and not active_value:
+                icon = self.icon_inactive
+                color = (
+                    self.icon_inactive_color
+                    if self.icon_inactive_color
+                    else self.theme_cls.text_color
+                )
+
+            Animation(size=size, t="out_quad", d=0.2).start(self.ids.thumb)
+            Animation(color=color, t="out_quad", d=0.2).start(
+                self.ids.thumb.ids.icon
+            )
+            self.set_icon(self, icon)
+
+        self._update_thumb_pos()
+
+
+class CustomTwoMDSwitch(MDSwitch):
+    def __init__(self, passing_tests, notification, tests, **kwargs):
+        super().__init__(**kwargs)
+        self.icon_active = "check"
+        self.icon_active_color = "white"
+        self.thumb_color_active = _GREEN
+        self.track_color_active = (0.11, 0.49, 0.27, 0.7)
+        self.passing_tests = passing_tests
+        self.notification = notification
+        self.tests = tests
+
+    def on_active(self, instance_switch, active_value: bool) -> None:
+        if active_value == True:
+            self.passing_tests.text_color = _GRAY
+            self.notification.text_color = _GREEN
+            for test in self.tests:
+                test.disabled = True
+        else:
+            self.passing_tests.text_color = _GREEN
+            self.notification.text_color = _GRAY
+            for test in self.tests:
+                test.disabled = False
+
+        if self.theme_cls.material_style == "M3" and self.widget_style != "ios":
+            size = (
+                (
+                    (dp(16), dp(16))
+                    if not self.icon_inactive
+                    else (dp(24), dp(24))
+                )
+                if not active_value
+                else (dp(24), dp(24))
+            )
+            icon = "blank"
+            color = (0, 0, 0, 0)
+
+            if self.icon_active and active_value:
+                icon = self.icon_active
+                color = (
+                    self.icon_active_color
+                    if self.icon_active_color
+                    else self.theme_cls.text_color
+                )
+            elif self.icon_inactive and not active_value:
+                icon = self.icon_inactive
+                color = (
+                    self.icon_inactive_color
+                    if self.icon_inactive_color
+                    else self.theme_cls.text_color
+                )
+
+            Animation(size=size, t="out_quad", d=0.2).start(self.ids.thumb)
+            Animation(color=color, t="out_quad", d=0.2).start(
+                self.ids.thumb.ids.icon
+            )
+            self.set_icon(self, icon)
+
+        self._update_thumb_pos()
+
+
+# class ReleaseEvent()
+
+
+class SetEvent(MDScrollView):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.size_hint = (None, None)
-        self.size = ("100dp", "350dp")
-        all_box = MDGridLayout(cols = 1, rows = 12, spacing = "4dp", padding = "4dp", pos_hint = {"center_x": 0.5, "center_y": 0.5})
-        all_box.add_widget(MDBoxLayout(MDLabel(text = "Сдача зачетов:", bold = True), MDSwitch(active = True, icon_active = "check", icon_active_color = "white", pos_hint = {"center_y": .5}, thumb_color_active = _GREEN, track_color_active = (0.11, 0.49, 0.27, 0.7)),
-                                         pos_hint = {"center_x": 0.49, "center_y": 0.5}, size_hint_x = None, width = "200dp"))
-        all_box.add_widget(MDBoxLayout(MDLabel(text = "Уведомление:", bold = True), MDSwitch(active = True, icon_active = "check", icon_active_color = "white", pos_hint = {"center_y": .5}, thumb_color_active = _GREEN, track_color_active = (0.11, 0.49, 0.27, 0.7)),
-                                         pos_hint = {"center_x": 0.49, "center_y": 0.2}, size_hint_x = None, width = "200dp"))
-        self.add_widget(all_box)
+        self.size_hint_y = None
+        self.height = "350dp"
+
+        top_box = MDBoxLayout(size_hint = (None, None), size = ("270dp", "610dp"), orientation = "vertical", spacing = "-15dp")
+
+        period = MDLabel(text = "Регулярно", bold = True, theme_text_color = "Custom", text_color = _GRAY, font_style = "Body2", pos_hint = {"center_y": 0.5})
+        not_peripd = MDLabel(text = "                 Один раз", bold = True, theme_text_color = "Custom", text_color = _GRAY, font_style = "Body2", pos_hint = {"center_y": 0.5})
+        text_period = CustomTextField(text = "30", helper_text="Укажите периодичность события в днях...", size_hint_x = None, width = "270dp", input_filter = "int")
+        
+        top_box.add_widget(MDBoxLayout(period, CustomThreeMDSwitch(period, not_peripd, text_period, pos_hint = {"center_y": 0.5}),
+                                       not_peripd, size_hint = (None, None), size = ("270dp", "20dp"), spacing = "0dp", padding = ("0dp", "0dp", "0dp", "60dp")))
+        
+
+        passing_tests = MDLabel(text = "Сдача зачетов", bold = True, theme_text_color = "Custom", text_color = _GRAY, font_style = "Body2", pos_hint = {"center_y": 0.5})
+        notification = MDLabel(text = "       Уведомление", bold = True, theme_text_color = "Custom", text_color = _GREEN, font_style = "Body2", pos_hint = {"center_y": 0.5})
+        tests = []
+        for _ in range(1, 10):
+            tests.append(CustomTextField(helper_text="Введите задание...", size_hint_x = None, width = "270dp"))
+
+        top_box.add_widget(MDBoxLayout(passing_tests, CustomTwoMDSwitch(passing_tests, notification, tests, pos_hint = {"center_y": 0.5}),
+                                       notification, size_hint = (None, None), size = ("270dp", "20dp"), spacing = "0dp", padding = ("0dp", "40dp", "0dp", "40dp")))
+        
+        top_box.add_widget(text_period)
+        top_box.add_widget(CustomTextField(text = datetime.datetime.today().strftime("%d.%m.%Y"), helper_text="Введите дату события...", size_hint_x = None, width = "270dp"))
+        top_box.add_widget(CustomTextField(helper_text="Введите текст события...", size_hint_x = None, width = "270dp"))
+        
+        for test in tests:
+            top_box.add_widget(test)
+
+        self.add_widget(top_box)
 
 
 class AboutBox(MDFloatLayout):

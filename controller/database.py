@@ -1,4 +1,4 @@
-from configurate.database import _NAME_USERS_DATABASE, _NAME_DATA_DATABASE, _NAME_DATABASE, _NAME_JOURNALS_DATABASE, _NAME_SETTINGS_JOURNAL
+from configurate.database import _NAME_USERS_DATABASE, _NAME_DATA_DATABASE, _NAME_DATABASE, _NAME_JOURNALS_DATABASE, _NAME_SETTINGS_JOURNAL, _NAME_EVENTS_JOURNAL, _NAME_TASK_EVENT
 import sqlite3
 import json
 
@@ -37,7 +37,30 @@ class DataBase():
                                                                     user_id INTEGER REFERENCES USERS(user_id) ON UPDATE CASCADE,
                                                                     journal_id INTEGER REFERENCES JOURNALS(journal_id) ON UPDATE CASCADE,
                                                                     session_log TEXT);""")
+        
+        self.cursor.execute(f"""CREATE TABLE IF NOT EXISTS {_NAME_EVENTS_JOURNAL}(
+                                                                    event_id INTEGER PRIMARY KEY,
+                                                                    journal_id INTEGER REFERENCES JOURNALS(journal_id) ON UPDATE CASCADE,
+                                                                    switch_period BOOL,
+                                                                    switch_task BOOL,
+                                                                    period INT,
+                                                                    date TEXT,
+                                                                    task_1 TEXT,
+                                                                    task_2 TEXT,
+                                                                    task_3 TEXT,
+                                                                    task_4 TEXT,
+                                                                    task_5 TEXT,
+                                                                    task_6 TEXT,
+                                                                    task_7 TEXT,
+                                                                    task_8 TEXT,
+                                                                    task_9 TEXT,
+                                                                    task_10 TEXT );""")
     
+        self.cursor.execute(f"""CREATE TABLE IF NOT EXISTS {_NAME_TASK_EVENT}(
+                                                                    task_id INTEGER PRIMARY KEY,
+                                                                    event_id INTEGER REFERENCES EventsJournals(event_id) ON UPDATE CASCADE,
+                                                                    task TEXT);""")
+
     def set_row(self, name_table:str, data:tuple):
         qwest = '?, ' * len(data)
         self.cursor.executemany(f"""INSERT INTO {name_table} VALUES ({qwest[:-2]});""", [data])
@@ -72,8 +95,17 @@ class DataBase():
         self.cursor.execute(f"""UPDATE Data SET  session_log = '{new_data}' WHERE journal_id = '{journal_id}' AND user_id = '{user_id}';""")
         self.connect.commit()
 
+    def update_row_events(self, event_id, journal_id, new_data):
+        self.cursor.execute(f"""UPDATE EventsJournals SET  date = '{new_data}' WHERE journal_id = '{journal_id}' AND event_id = '{event_id}';""")
+        self.connect.commit()
+
     def get_last_id(self, name_col_id:str, name_table:str):
         id = self.cursor.execute(f"SELECT {name_col_id} FROM {name_table}").fetchall() or 0
+        if id != 0: id = id[-1][0]
+        return id
+
+    def get_last_task_id(self):
+        id = self.cursor.execute(f"SELECT task_id FROM TaskEvent").fetchall() or 0
         if id != 0: id = id[-1][0]
         return id
 
@@ -103,6 +135,9 @@ class DataBase():
 
     def get_data_user(self, user_id, journal_id, name_table="Users") -> tuple:
         return self.cursor.execute(f"SELECT * FROM {name_table} WHERE user_id = '{user_id}' AND journal_id = '{journal_id}'").fetchone()
+
+    def get_events_journal(self, journal_id):
+        return self.cursor.execute(f"SELECT * FROM EventsJournals WHERE journal_id = '{journal_id}'").fetchone()
 
     def get_all(self, name_table:str) -> tuple:
         return self.cursor.execute(f"SELECT * FROM {name_table}").fetchall()

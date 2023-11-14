@@ -2,14 +2,14 @@ from kivymd.app import MDApp
 from kivymd.uix.scrollview import MDScrollView
 from kivymd.uix.floatlayout import MDFloatLayout
 from kivymd.uix.toolbar import MDTopAppBar, MDBottomAppBar
-from kivymd.uix.label import MDLabel
+from kivymd.uix.label import MDLabel, MDIcon
 from kivymd.uix.screenmanager import MDScreenManager
 from kivymd.uix.screen import MDScreen
 from kivymd.uix.list import MDList, OneLineIconListItem, IconLeftWidget, TwoLineIconListItem, OneLineListItem
 from kivymd.uix.card import MDCardSwipe, MDCardSwipeLayerBox, MDCardSwipeFrontBox, MDCard
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.textfield import MDTextField
-from kivymd.uix.button import MDFlatButton, MDRectangleFlatIconButton
+from kivymd.uix.button import MDFlatButton, MDRectangleFlatIconButton, MDIconButton
 from kivymd.uix.scrollview import MDScrollView
 from kivymd.uix.gridlayout import MDGridLayout
 from kivymd.uix.behaviors import TouchBehavior
@@ -17,6 +17,7 @@ from kivymd.uix.dialog import MDDialog
 from kivymd.uix.filemanager import MDFileManager
 from kivymd.uix.selectioncontrol import MDSwitch
 from kivymd.uix.snackbar import Snackbar
+from kivy.uix.widget import Widget
 
 from kivy.metrics import dp
 from kivy.animation import Animation
@@ -29,7 +30,7 @@ from io import BytesIO
 import shutil
 from kivy.utils import platform
 
-from view.view import SetEvent, SetJournal, SetUser, AboutBox, SettingsBox, ContactsBox, DialogUserInfo, SetUserCard, CustomLogUser
+from view.view import SetEvent, SetJournal, SetUser, AboutBox, SettingsBox, ContactsBox, DialogUserInfo, SetUserCard, CustomTextField
 from configurate.config import _MOUNTH, _DAYS, _MOUNTH_DAY, _RUS_DAYS
 from configurate.colors import _GREEN, _GRAY, _RED
 
@@ -427,7 +428,7 @@ class MainScreen(MDScreenManager):
 
 
             box_1.add_widget(MDRectangleFlatIconButton(icon = "account", theme_text_color="Custom", _min_width = "300dp", line_color = _GREEN, icon_color = "white", text_color = "white", text = "К списку учеников", pos_hint = {"center_x":0.5, "center_y": 0.35}, md_bg_color = _GREEN, on_release = lambda x: app.view_users(name_journal)))
-            box_1.add_widget(MDRectangleFlatIconButton(icon = "calendar", theme_text_color="Custom", _min_width = "300dp", line_color = _GREEN, icon_color = "white", text_color = "white", text = "Добавить событие", pos_hint = {"center_x":0.5, "center_y": 0.25}, md_bg_color = _GREEN, on_release = lambda x: app.set_event()))
+            box_1.add_widget(MDRectangleFlatIconButton(icon = "calendar", theme_text_color="Custom", _min_width = "300dp", line_color = _GREEN, icon_color = "white", text_color = "white", text = "Добавить событие", pos_hint = {"center_x":0.5, "center_y": 0.25}, md_bg_color = _GREEN, on_release = lambda x: app.set_event(self.name_journal)))
             box_1.add_widget(MDRectangleFlatIconButton(icon = "finance", theme_text_color="Custom", _min_width = "300dp", line_color = _GREEN, icon_color = "white", text_color = "white", text = "Статистика", pos_hint = {"center_x":0.5, "center_y": 0.15}, md_bg_color = _GREEN))
 
             box.add_widget(box_1)
@@ -669,6 +670,7 @@ class SessionLog(MDApp):
         for journal in journals:
             journal_id, name_journal, description = journal
             config = database.get_config_journal(journal_id)
+            events = database.get_events_journal(journal_id)
 
             self.download_journal(name_journal, description)
             if config["sorted"]:
@@ -680,7 +682,7 @@ class SessionLog(MDApp):
                 for item, user in zip(range(1, len(users) + 1), users):
                     user_id = user[0]
                     session_log = database.get_session_log(user_id, journal_id)
-                    self.download_users(item, name_journal, user, data=session_log, config=config)
+                    self.download_users(item, name_journal, user, data=session_log, config=config, events=events)
 
     def download_journal(self, name_journal:str, description:str): 
         """
@@ -694,7 +696,7 @@ class SessionLog(MDApp):
         card_journal = CardListJournal(name_journal, journal, description)
         self.root.ids.screen_manager.get_screen("my_journal").children[0].children[1].children[0].add_widget(card_journal)
 
-    def download_users(self, item:int, name_journal:str, users:list, data=None, config=None):
+    def download_users(self, item:int, name_journal:str, users:list, data=None, config=None, events=None):
         """
         Метод добавляет список пользователей в журнале.
         """
@@ -735,7 +737,20 @@ class SessionLog(MDApp):
 
         week_days = get_week_date()
         number_day_labels = [MDLabel(text=item, halign="center", font_style="Overline") for item in week_days]
-        card_days_week = MDGridLayout(pos_hint={"center_y":0.45}, spacing="7dp", padding="4dp", cols=7, rows=3)
+        card_days_week = MDGridLayout(pos_hint={"center_y":0.65}, spacing="7dp", padding="0dp", cols=7, rows=3)
+
+        if events != None:
+            data_today = datetime.datetime.today().strftime("%m %Y")
+            d, m, y = events[5].split(".")
+            for day in week_days:
+                if str(day) == d.removeprefix("0") and data_today == f"{m} {y}":
+                    card_days_week.add_widget(MDIconButton(icon = "exclamation-thick", on_release = lambda x: app.add_task(events), theme_icon_color = "Custom", icon_color = "white", icon_size = "14sp", md_bg_color = _GREEN, padding = "0dp"))
+                    continue
+                card_days_week.add_widget(Widget())
+        else:
+            for day in week_days:
+                card_days_week.add_widget(MDIconButton(theme_icon_color = "Custom", icon_color = "white", icon_size = "14sp", md_bg_color = "white", padding = "0dp"))
+                    
 
         if config["three_day"]:
             x = [0, 2, 4]
@@ -749,10 +764,8 @@ class SessionLog(MDApp):
                 day_today = "0" + day_today
 
             data_today = datetime.datetime.today().strftime("%Y %b")
-            # result = datetime.datetime.today() + datetime.timedelta(days=int(day_today))
-            # result = result.strftime("%Y %b")
-            # print(data[0].get(data_today).keys())
-            if data_today in data[0] and day_today in data[0].get(data_today):# and :#result in data[0].keys():
+
+            if data_today in data[0] and day_today in data[0].get(data_today):
                 if data[0].get(data_today).get(day_today) == 1:
                     card_day.md_bg_color = _GREEN
                 elif data[0].get(data_today).get(day_today) == 0:
@@ -767,7 +780,7 @@ class SessionLog(MDApp):
 
         box_childrens.add_widget(user_labels)
         box_childrens.add_widget(card_days_week)
-        card_swipe = MDCard(box_childrens, size_hint_y=None, height="60dp")
+        card_swipe = MDCard(box_childrens, size_hint_y=None, height="70dp")
         journals.add_widget(card_swipe)
 
         def dialog_user_info(name_journal, user_info):
@@ -990,14 +1003,102 @@ class SessionLog(MDApp):
             sw_1.active = True
             return
         
-    def set_event(self):
+    def set_event(self, name_journal):
         content = SetEvent()
         dialog = MDDialog(radius=[dp(20), dp(7), dp(20), dp(7)], title = "Добавить событие", type = "custom", content_cls = content,
-                          buttons = [MDFlatButton(text = "Добавить", md_bg_color = _GREEN, theme_text_color = "Custom", text_color = "white", on_release = lambda x: self.set_user(name_journal, dialog, content))])
+                          buttons = [MDFlatButton(text = "Добавить", md_bg_color = _GREEN, theme_text_color = "Custom", text_color = "white", on_release = lambda x: self.add_event(name_journal, dialog, content))])
         dialog.open()
 
-    def on_save_event(self, instance, value, date_range):
-        print(instance, value, date_range)
+    def add_event(self, name_journal, dialog, content):
+        data = []
+
+        event_id = database.get_last_id("event_id", "EventsJournals")
+        data.append(event_id + 1)
+
+        journal_id = database.get_journal_id(name_journal)
+        data.append(journal_id)
+
+        switch_period = content.children[0].children[13].children[1].active
+        data.append(switch_period)
+
+        switch_task = content.children[0].children[12].children[1].active
+        data.append(switch_task)
+
+        for i in range(11, -1, -1):
+            data.append(content.children[0].children[i].text)
+
+        database.set_row("EventsJournals", data)
+        dialog.dismiss(force = True)
+
+    def add_task(self, events):
+        if events[3] == True and events[2] == True:
+            content = MDBoxLayout(MDLabel(text = events[6]))
+            dialog = MDDialog(radius=[dp(20), dp(7), dp(20), dp(7)], title = "Соббытие", type = "custom", content_cls = content,
+                            buttons = [MDFlatButton(text = "Хорошо ", md_bg_color = _GREEN, theme_text_color = "Custom", text_color = "white", on_release = lambda x: dialog.dismiss(force=True))])
+            dialog.open()
+        elif events[3] == False and events[2] == True:
+            content = MDBoxLayout(MDLabel(text = events[6], size_hint_x = None, width = "200dp"), size_hint = (None, None), size = ("100dp", "350dp"), orientation="vertical", spacing = "30dp")
+            for task in events[7:]:
+                if task == "":
+                    continue
+                content.add_widget(MDBoxLayout(MDLabel(text = task, halign = "left", text_color = _GREEN), CustomTextField(pos_hint = {"center_y": 0.5}), size_hint = (None, None), size = ("250dp", "5dp")))
+            content.add_widget(Widget(size_hint = (None, None), size = ("300dp", "10dp")))
+            dialog = MDDialog(radius=[dp(20), dp(7), dp(20), dp(7)], title = "Соббытие", type = "custom", content_cls = content,
+                            buttons = [MDFlatButton(text = "Хорошо ", md_bg_color = _GREEN, theme_text_color = "Custom", text_color = "white", on_release = lambda x: good())])
+            dialog.open()
+
+        elif events[3] == True and events[2] == False:
+            content = MDBoxLayout(MDLabel(text = events[6]))
+            dialog = MDDialog(radius=[dp(20), dp(7), dp(20), dp(7)], title = "Событие", type = "custom", content_cls = content,
+                            buttons = [MDFlatButton(text = "Да ", md_bg_color = _GREEN, theme_text_color = "Custom", text_color = "white", on_release = lambda x: yes_event()),
+                                       MDFlatButton(text = "Нет ", md_bg_color = _GREEN, theme_text_color = "Custom", text_color = "white", on_release = lambda x: dialog.dismiss(force=True))])
+            dialog.open()
+        
+        elif events[3] == False and events[2] == False:
+            content = MDBoxLayout(MDLabel(text = events[6], size_hint_x = None, width = "200dp"), size_hint = (None, None), size = ("100dp", "350dp"), orientation="vertical", spacing = "30dp")
+            for task in events[7:]:
+                if task == "":
+                    continue
+                content.add_widget(MDBoxLayout(MDLabel(text = task, halign = "left", text_color = _GREEN), CustomTextField(pos_hint = {"center_y": 0.5}), size_hint = (None, None), size = ("250dp", "5dp")))
+            content.add_widget(Widget(size_hint = (None, None), size = ("300dp", "10dp")))
+            dialog = MDDialog(radius=[dp(20), dp(7), dp(20), dp(7)], title = "Соббытие", type = "custom", content_cls = content,
+                            buttons = [MDFlatButton(text = "Хорошо ", md_bg_color = _GREEN, theme_text_color = "Custom", text_color = "white", on_release = lambda x: period_good())])
+            dialog.open()
+
+        def period_good():
+            data = []
+            data.append(database.get_last_task_id() + 1)
+            data.append(events[0])
+
+            result = {}
+            for i in range(1, len(content.children) - 1):
+                result[content.children[i].children[1].text] = content.children[i].children[0].text
+
+            data.append(json.dumps(result))
+
+            database.set_row("TaskEvent", data)
+            new_date = (datetime.datetime.today() + datetime.timedelta(days=int(events[4]))).strftime("%d.%m.%Y")
+            database.update_row_events(events[0], events[1], new_date)
+            dialog.dismiss(force=True)
+
+        def good():
+            data = []
+            data.append(database.get_last_task_id() + 1)
+            data.append(events[0])
+
+            result = {}
+            for i in range(1, len(content.children) - 1):
+                result[content.children[i].children[1].text] = content.children[i].children[0].text
+
+            data.append(json.dumps(result))
+
+            database.set_row("TaskEvent", data)
+            dialog.dismiss(force=True)
+
+        def yes_event():
+            new_date = (datetime.datetime.today() + datetime.timedelta(days=int(events[4]))).strftime("%d.%m.%Y")
+            database.update_row_events(events[0], events[1], new_date)
+            dialog.dismiss(force=True)
 
     def update_journal(self, new_name_journal, old_name_journal, description, config=None):
         journal_id = database.get_journal_id(old_name_journal)
